@@ -56,6 +56,19 @@
   .door .tag{position:absolute;left:50%;bottom:-24px;transform:translateX(-50%);
     font-family:'Cinzel',serif;font-size:10px;letter-spacing:.09em;white-space:nowrap;
     color:#7d8790;line-height:1}
+  .door .ico{position:absolute;left:50%;top:-30px;transform:translateX(-50%);
+    width:22px;height:22px;display:block}
+  .door[data-state="open"] .ico{filter:drop-shadow(0 0 6px rgba(201,162,39,.7))}
+
+  .wait{max-width:560px;margin:6vh auto;text-align:center}
+  .wait h2{color:var(--brass);font-size:17px;text-transform:uppercase;margin:0 0 10px}
+  .wait p{color:#8b969e;line-height:1.7;margin:0 0 6px}
+  .clock{font-family:'Cinzel',serif;font-size:34px;color:var(--fog);letter-spacing:.08em;
+    margin:26px 0 6px}
+  .when{color:var(--brass);font-size:15px}
+  .mystory{text-align:left;margin-top:36px;border-top:1px solid #1c2228;padding-top:22px}
+  .mystory h3{font-size:12px;color:#8b969e;text-transform:uppercase;letter-spacing:.1em;margin:0 0 10px}
+  .mystory .story{font-size:15px}
   .door[data-state="sealed"]{cursor:not-allowed}
   .door[data-state="sealed"] .tag{color:#5c646b}
   .door[data-state="done"]{background:rgba(0,0,0,.55);cursor:not-allowed}
@@ -101,7 +114,7 @@
 
 <section class="gate" id="gate">
   <h1>The Twelve Doors</h1>
-  <p>Enter your student number to wake up in the room.<br>学籍番号を入力してください。</p>
+  <p>Enter your student number to wake up in the room.</p>
   <input id="num" inputmode="numeric" placeholder="241000" autocomplete="off">
   <div style="margin-top:14px"><button class="primary" id="enterBtn">Enter the room</button></div>
   <div class="msg err" id="gateMsg"></div>
@@ -138,6 +151,21 @@
       <button class="primary" id="postBtn">Post to door <span id="doorLabel"></span></button>
     </div>
     <div class="msg" id="writeMsg"></div>
+  </section>
+
+  <section id="waitStage" hidden>
+    <div class="wait">
+      <h2>Your story is behind door <span id="wDoor"></span></h2>
+      <p>The other doors are still sealed. You cannot read your classmates' stories yet.</p>
+      <div class="clock" id="clock">—</div>
+      <div class="when">Reading opens <b id="when"></b></div>
+      <p style="margin-top:24px;font-size:14px">You can still rewrite your story until then.</p>
+      <div style="margin-top:8px"><button id="editBtn">Edit my story</button></div>
+      <div class="mystory">
+        <h3>What you posted — <span id="wTitle"></span></h3>
+        <div class="story" id="wStory"></div>
+      </div>
+    </div>
   </section>
 
   <section id="roomStage" hidden>
@@ -192,6 +220,25 @@ const LAB = {1:'Strongly disagree', 2:'Disagree', 3:'Agree', 4:'Strongly agree'}
 const HOTSPOTS = [9.3,17.0,24.6,32.2,39.8,47.3,54.9,62.5,70.1,77.7,85.2,92.8]; // % centres
 const DOOR_TOP = 27.0, DOOR_H = 23.5, DOOR_W = 6.9;
 
+/* status icons drawn above each door */
+const svg = (c, body) =>
+  '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="1.7" '+
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+body+'</svg>';
+
+const ICONS = {
+  /* open padlock — you may read this one */
+  open:   svg('#c9a227','<rect x="4" y="10.5" width="16" height="11" rx="2"/>'+
+                         '<path d="M8 10.5V7a4 4 0 0 1 7.5-2"/><circle cx="12" cy="16" r="1.4"/>'),
+  /* closed padlock, ticked — you finished it */
+  done:   svg('#6f9f7f','<rect x="4" y="10.5" width="16" height="11" rx="2"/>'+
+                         '<path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/><path d="M9.3 16.2l1.8 1.8 3.6-3.6"/>'),
+  /* chain link — sealed, nothing behind it yet */
+  sealed: svg('#5c646b','<path d="M10 13.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.54 3.54 0 0 0-5-5L11 7.5"/>'+
+                         '<path d="M14 10.5a3.5 3.5 0 0 0-5 0L6.5 13a3.54 3.54 0 0 0 5 5L13 16.5"/>'),
+  /* star — your own door */
+  mine:   svg('#c9a227','<path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9z"/>'),
+};
+
 let ME = null, STATE = null, ACTIVE = null;
 const $ = id => document.getElementById(id);
 const say = (el, t, c) => { el.className = 'msg ' + (c || ''); el.textContent = t; };
@@ -231,14 +278,57 @@ async function enter(){
   await refresh();
 }
 
+let TICK = null, EDITING = false;
+
 async function refresh(){
   const r = await api({action:'state', student_number:ME.student_number});
   if(!r.ok) return;
   STATE = r;
-  $('writeStage').hidden = r.posted;
-  $('roomStage').hidden = !r.posted;
-  if(r.posted) renderDoors();
+
+  const writing = !r.posted || EDITING;
+  const waiting = r.posted && !EDITING && !r.readingOpen;
+  const reading = r.posted && !EDITING && r.readingOpen;
+
+  $('writeStage').hidden = !writing;
+  $('waitStage').hidden  = !waiting;
+  $('roomStage').hidden  = !reading;
+
+  if(writing && r.myStory){                    // pre-fill when re-editing
+    $('title').value = r.myStory.title;
+    $('story').value = r.myStory.story;
+    $('story').dispatchEvent(new Event('input'));
+  }
+  if(waiting) startWait(r);
+  if(reading) renderDoors();
+  if(!waiting && TICK){ clearInterval(TICK); TICK = null; }
 }
+
+/* ---- waiting for the doors to unlock ---- */
+function startWait(r){
+  $('wDoor').textContent  = ME.door;
+  $('when').textContent   = r.opensAtText || 'later';
+  $('wTitle').textContent = r.myStory ? r.myStory.title : '';
+  $('wStory').textContent = r.myStory ? r.myStory.story : '';
+
+  // trust the server's clock, not the student's laptop
+  const target = new Date(r.opensAt).getTime();
+  const drift  = new Date(r.serverNow).getTime() - Date.now();
+
+  if(TICK) clearInterval(TICK);
+  const tick = () => {
+    let ms = target - (Date.now() + drift);
+    if(ms <= 0){ clearInterval(TICK); TICK = null; refresh(); return; }
+    const s = Math.floor(ms/1000);
+    const h = String(Math.floor(s/3600)).padStart(2,'0');
+    const m = String(Math.floor(s%3600/60)).padStart(2,'0');
+    const q = String(s%60).padStart(2,'0');
+    $('clock').textContent = h + ' : ' + m + ' : ' + q;
+  };
+  tick();
+  TICK = setInterval(tick, 1000);
+}
+
+$('editBtn').onclick = () => { EDITING = true; refresh(); };
 
 /* ---- writing ---- */
 $('story').addEventListener('input', () => {
@@ -253,7 +343,8 @@ $('postBtn').onclick = async () => {
                        title:$('title').value, story:$('story').value});
   $('postBtn').disabled = false;
   if(!r.ok) return say($('writeMsg'), r.error, 'err');
-  say($('writeMsg'), 'Posted. Your door is open.', 'ok');
+  say($('writeMsg'), 'Posted.', 'ok');
+  EDITING = false;
   await refresh();
 };
 
@@ -280,13 +371,13 @@ function renderDoors(){
     b.dataset.state = s;
     b.disabled = (s !== 'open');
     b.setAttribute('aria-label', 'Door ' + d.door + ' — ' + tag);
-    b.innerHTML = '<span class="tag">' + tag + '</span>';
+    b.innerHTML = ICONS[s] + '<span class="tag">' + tag + '</span>';
     if(s === 'open') b.onclick = () => openDoor(d.door);
     box.appendChild(b);
   });
 
   $('progress').innerHTML = open === 0
-    ? '<b style="color:#6f9f7f">All doors locked. You are out. お疲れさま！</b>'
+    ? '<b style="color:#6f9f7f">All doors locked. You are out.</b>'
     : 'Doors left to open: <b style="color:#c9a227">' + open + '</b> &nbsp;·&nbsp; locked: ' + done;
 }
 
