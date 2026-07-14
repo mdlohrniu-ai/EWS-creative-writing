@@ -34,10 +34,25 @@
   .msg{font-size:14px;min-height:20px;margin-top:12px}
   .msg.err{color:var(--danger)}.msg.ok{color:var(--ok)}
 
+  /* loading */
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spin{display:inline-block;width:13px;height:13px;vertical-align:-2px;margin-right:8px;
+    border:2px solid rgba(201,162,39,.25);border-top-color:var(--brass);border-radius:50%;
+    animation:spin .7s linear infinite}
+  button .spin{border-color:rgba(11,14,17,.3);border-top-color:var(--ink);margin-right:7px}
+  button.ghost .spin{border-color:rgba(201,162,39,.25);border-top-color:var(--brass)}
+  .veil-load{max-width:760px;margin:0 auto;text-align:center;color:#8b969e;
+    font-family:'Cinzel',serif;font-size:13px;letter-spacing:.08em;padding:60px 0}
+  @media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}}
+
+  .deadline{font-size:13px;color:#8b969e;margin:0 0 18px}
+  .deadline b{color:var(--brass);font-weight:400}
+  .closed{border:1px solid var(--danger);color:#e0a196;background:rgba(194,91,74,.07);
+    padding:14px 18px;font-size:14px;line-height:1.6;margin-bottom:18px;border-radius:2px}
+
   .gate{max-width:400px;margin:14vh auto;text-align:center}
   .gate h1{font-size:25px;color:var(--brass);margin:0 0 8px;text-transform:uppercase}
   .gate p{color:#8b969e;margin:0 0 26px;line-height:1.6}
-  .gate input{text-align:center}
   .gate .msg{text-align:center}
 
   .prompt{background:#11161b;border-left:2px solid var(--brass-dim);padding:16px 20px;
@@ -115,7 +130,7 @@
 <section class="gate" id="gate">
   <h1>The Twelve Doors</h1>
   <p>Enter your student number to wake up in the room.</p>
-  <input id="num" inputmode="numeric" placeholder="241000" autocomplete="off">
+  <input id="num" inputmode="numeric" placeholder="e.g. 241000" autocomplete="off">
   <div style="margin-top:14px"><button class="primary" id="enterBtn">Enter the room</button></div>
   <div class="msg err" id="gateMsg"></div>
 </section>
@@ -142,6 +157,8 @@
       <span>Beginning <b>150+</b></span><span>Middle <b>200+</b></span><span>End <b>150+</b></span>
       <span>Total <b>500+ words</b></span>
     </div>
+    <p class="deadline" id="deadline" hidden>Writing closes <b id="closesAt"></b></p>
+    <div class="closed" id="closedNote" hidden></div>
     <label class="lbl" for="title">Title</label>
     <input id="title" placeholder="Give your story a title" maxlength="90">
     <label class="lbl" for="story" style="margin-top:16px">Your story</label>
@@ -160,7 +177,7 @@
       <div class="clock" id="clock">—</div>
       <div class="when">Reading opens <b id="when"></b></div>
       <p style="margin-top:24px;font-size:14px">You can still rewrite your story until then.</p>
-      <div style="margin-top:8px"><button id="editBtn">Edit my story</button></div>
+      <div style="margin-top:8px"><button class="ghost" id="editBtn">Edit my story</button></div>
       <div class="mystory">
         <h3>What you posted — <span id="wTitle"></span></h3>
         <div class="story" id="wStory"></div>
@@ -187,7 +204,8 @@
 </div>
 
 <div class="veil" id="veil">
-  <div class="panel">
+  <div class="veil-load" id="veilLoad" hidden><span class="spin"></span>Opening the door…</div>
+  <div class="panel" id="panel">
     <h2 id="pDoor"></h2>
     <p class="sub" id="pTitle"></p>
     <div class="story" id="pStory"></div>
@@ -199,7 +217,7 @@
       placeholder="What did you like? What could be better? (10 words or more)"></textarea>
     <p class="hint">Once you send this, door <span id="pDoor2"></span> locks. You cannot open it again.</p>
     <div class="row">
-      <button id="cancelBtn">Back to the room</button>
+      <button class="ghost" id="cancelBtn">Back to the room</button>
       <button class="primary" id="lockBtn">Send &amp; lock the door</button>
     </div>
     <div class="msg" id="panelMsg"></div>
@@ -243,6 +261,14 @@ let ME = null, STATE = null, ACTIVE = null;
 const $ = id => document.getElementById(id);
 const say = (el, t, c) => { el.className = 'msg ' + (c || ''); el.textContent = t; };
 
+/** Put a button into a spinning, disabled state; returns a function to undo it. */
+function busy(btn, label){
+  const html = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>' + (label || 'Working…');
+  return () => { btn.disabled = false; btn.innerHTML = html; };
+}
+
 async function api(payload){
   try{
     const r = await fetch(API_URL, {
@@ -264,18 +290,18 @@ $('num').addEventListener('keydown', e => { if(e.key === 'Enter') enter(); });
 async function enter(){
   const n = $('num').value.trim();
   if(!n) return say($('gateMsg'), 'Enter your student number.', 'err');
-  $('enterBtn').disabled = true;
-  say($('gateMsg'), 'Opening…', '');
+  const done = busy($('enterBtn'), 'Opening…');
+  say($('gateMsg'), '', '');
   const r = await api({action:'login', student_number:n});
-  $('enterBtn').disabled = false;
-  if(!r.ok) return say($('gateMsg'), r.error, 'err');
+  if(!r.ok){ done(); return say($('gateMsg'), r.error, 'err'); }
   ME = r.student;
   localStorage.setItem('doors_num', n);
+  await refresh();
+  done();
   $('gate').hidden = true; $('main').hidden = false;
   $('myDoor').textContent = ME.door;
   $('myName').textContent = ME.name;
   $('doorLabel').textContent = ME.door;
-  await refresh();
 }
 
 let TICK = null, EDITING = false;
@@ -298,6 +324,21 @@ async function refresh(){
     $('story').value = r.myStory.story;
     $('story').dispatchEvent(new Event('input'));
   }
+
+  /* writing deadline */
+  $('deadline').hidden = !(r.closesAtText && r.writingOpen);
+  $('closesAt').textContent = r.closesAtText || '';
+  const shut = !r.writingOpen;
+  $('closedNote').hidden = !shut;
+  $('closedNote').textContent = shut
+    ? (r.posted
+        ? 'Writing closed at ' + r.closesAtText + '. Your story is locked in and can no longer be edited.'
+        : 'Writing closed at ' + r.closesAtText + '. You did not post a story, so your door stays sealed. Speak to your teacher.')
+    : '';
+  $('postBtn').disabled = shut;
+  $('editBtn').hidden = shut;
+  if(shut && EDITING){ EDITING = false; }
+
   if(waiting) startWait(r);
   if(reading) renderDoors();
   if(!waiting && TICK){ clearInterval(TICK); TICK = null; }
@@ -337,15 +378,15 @@ $('story').addEventListener('input', () => {
   $('wc').style.color = w >= 500 ? '#6f9f7f' : '#6d767d';
 });
 $('postBtn').onclick = async () => {
-  $('postBtn').disabled = true;
-  say($('writeMsg'), 'Posting…', '');
+  const done = busy($('postBtn'), 'Posting…');
+  say($('writeMsg'), '', '');
   const r = await api({action:'submit', student_number:ME.student_number,
                        title:$('title').value, story:$('story').value});
-  $('postBtn').disabled = false;
-  if(!r.ok) return say($('writeMsg'), r.error, 'err');
+  if(!r.ok){ done(); return say($('writeMsg'), r.error, 'err'); }
   say($('writeMsg'), 'Posted.', 'ok');
   EDITING = false;
   await refresh();
+  done();
 };
 
 /* ---- the room ---- */
@@ -408,9 +449,18 @@ $('rubric').addEventListener('change', () => {
 
 /* ---- read & grade ---- */
 async function openDoor(door){
-  const r = await api({action:'story', door:door});
-  if(!r.ok) return alert(r.error);
   ACTIVE = door;
+  $('veil').classList.add('on');
+  $('veil').scrollTop = 0;
+  $('panel').hidden = true;
+  $('veilLoad').hidden = false;
+
+  const r = await api({action:'story', door:door});
+
+  $('veilLoad').hidden = true;
+  if(!r.ok){ $('veil').classList.remove('on'); alert(r.error); refresh(); return; }
+  $('panel').hidden = false;
+
   $('pDoor').textContent = 'Door ' + door;
   $('pDoor2').textContent = door;
   $('pTitle').textContent = r.title + ' — ' + r.words + ' words';
@@ -419,8 +469,6 @@ async function openDoor(door){
   $('rubric').querySelectorAll('input').forEach(i => i.checked = false);
   $('tot').textContent = '–';
   say($('panelMsg'), '', '');
-  $('veil').classList.add('on');
-  $('veil').scrollTop = 0;
 }
 $('cancelBtn').onclick = () => $('veil').classList.remove('on');
 document.addEventListener('keydown', e => { if(e.key === 'Escape') $('veil').classList.remove('on'); });
@@ -428,16 +476,16 @@ document.addEventListener('keydown', e => { if(e.key === 'Escape') $('veil').cla
 $('lockBtn').onclick = async () => {
   const s = scores();
   if(Object.keys(s).length < 3) return say($('panelMsg'), 'Score every category before you send.', 'err');
-  $('lockBtn').disabled = true;
-  say($('panelMsg'), 'Locking…', '');
+  const done = busy($('lockBtn'), 'Locking…');
+  say($('panelMsg'), '', '');
   const r = await api(Object.assign({
     action:'review', reviewer_number:ME.student_number,
     door:ACTIVE, comment:$('comment').value,
   }, s));
-  $('lockBtn').disabled = false;
-  if(!r.ok) return say($('panelMsg'), r.error, 'err');
-  $('veil').classList.remove('on');
+  if(!r.ok){ done(); return say($('panelMsg'), r.error, 'err'); }
   await refresh();
+  done();
+  $('veil').classList.remove('on');
 };
 </script>
 </body>
