@@ -50,6 +50,31 @@
   .closed{border:1px solid var(--danger);color:#e0a196;background:rgba(194,91,74,.07);
     padding:14px 18px;font-size:14px;line-height:1.6;margin-bottom:18px;border-radius:2px}
 
+  /* results */
+  .res{max-width:800px;margin:0 auto}
+  .res h2{font-size:17px;color:var(--brass);text-transform:uppercase;margin:0 0 4px}
+  .res .sub{color:#7d8790;font-size:13px;margin:0 0 30px}
+  .cards{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:34px}
+  .card{flex:1;min-width:250px;border:1px solid var(--line);border-radius:2px;padding:20px 22px}
+  .card h3{font-size:12px;color:var(--brass);text-transform:uppercase;letter-spacing:.1em;
+    margin:0 0 3px;font-weight:500}
+  .card .of{font-size:12px;color:#6d767d;margin:0 0 18px}
+  .bar{margin-bottom:14px}
+  .bar .top{display:flex;justify-content:space-between;font-size:13px;color:#aab4bb;margin-bottom:5px}
+  .bar .top b{color:var(--fog);font-weight:400}
+  .track{height:5px;background:#1a2026;border-radius:3px;overflow:hidden}
+  .fill{height:100%;background:var(--brass)}
+  .card .sum{border-top:1px solid #1c2228;margin-top:16px;padding-top:14px;
+    display:flex;justify-content:space-between;align-items:baseline}
+  .card .sum .ui{font-size:11px;color:#8b969e;text-transform:uppercase;letter-spacing:.1em}
+  .card .sum .n{font-size:23px;color:var(--brass);font-family:'Cinzel',serif}
+  .card .sum .n small{font-size:12px;color:#6d767d}
+  .fb h3{font-size:12px;color:#8b969e;text-transform:uppercase;letter-spacing:.1em;margin:0 0 14px}
+  .quote{border-left:2px solid var(--line);padding:2px 0 2px 18px;margin-bottom:16px;
+    line-height:1.75;color:#c2ccd3;font-size:15px}
+  .quote.tq{border-left-color:var(--brass);color:#dbe3e8}
+  .none{color:#6d767d;font-style:italic;font-size:14px}
+
   .gate{max-width:400px;margin:14vh auto;text-align:center}
   .gate h1{font-size:25px;color:var(--brass);margin:0 0 8px;text-transform:uppercase}
   .gate p{color:#8b969e;margin:0 0 26px;line-height:1.6}
@@ -185,6 +210,10 @@
     </div>
   </section>
 
+  <section id="resStage" hidden>
+    <div class="res" id="resBody"></div>
+  </section>
+
   <section id="roomStage" hidden>
     <p class="step">Step 2 — read every open door</p>
     <div class="room">
@@ -312,12 +341,14 @@ async function refresh(){
   STATE = r;
 
   const writing = !r.posted || EDITING;
-  const waiting = r.posted && !EDITING && !r.readingOpen;
-  const reading = r.posted && !EDITING && r.readingOpen;
+  const results = r.resultsOpen && r.posted && !EDITING;
+  const waiting = r.posted && !EDITING && !results && !r.readingOpen;
+  const reading = r.posted && !EDITING && !results && r.readingOpen;
 
   $('writeStage').hidden = !writing;
   $('waitStage').hidden  = !waiting;
   $('roomStage').hidden  = !reading;
+  $('resStage').hidden   = !results;
 
   if(writing && r.myStory){                    // pre-fill when re-editing
     $('title').value = r.myStory.title;
@@ -341,8 +372,69 @@ async function refresh(){
 
   if(waiting) startWait(r);
   if(reading) renderDoors();
+  if(results) renderResults();
   if(!waiting && TICK){ clearInterval(TICK); TICK = null; }
 }
+
+/* ---- results ---- */
+const CATNAMES = {organization:'Organization', characters:'Characters', story:'Story'};
+
+function bars(o, max){
+  return Object.keys(CATNAMES).map(k => {
+    const v = o[k];
+    const pct = v == null ? 0 : (v / 4) * 100;
+    return '<div class="bar"><div class="top"><span>'+CATNAMES[k]+'</span>'+
+      '<b>'+(v == null ? '–' : v)+' / 4</b></div>'+
+      '<div class="track"><div class="fill" style="width:'+pct+'%"></div></div></div>';
+  }).join('');
+}
+
+async function renderResults(){
+  $('resBody').innerHTML = '<p class="none"><span class="spin"></span>Opening your door…</p>';
+  const r = await api({action:'results', student_number:ME.student_number});
+  if(!r.ok){ $('resBody').innerHTML = '<p class="none">'+r.error+'</p>'; return; }
+
+  const p = r.peers, t = r.teacher;
+
+  let h = '<h2>Behind door ' + r.door + '</h2>' +
+    '<p class="sub">' + (r.story ? r.story.title + ' — ' + r.story.words + ' words' : '') + '</p>';
+
+  h += '<div class="cards">';
+  h += '<div class="card"><h3>Your classmates</h3>' +
+       '<p class="of">Average of ' + p.n + ' ' + (p.n === 1 ? 'reader' : 'readers') + '</p>' +
+       (p.n ? bars(p, 4) +
+          '<div class="sum"><span class="ui">Total</span>' +
+          '<span class="n">' + p.total + ' <small>/ 12</small></span></div>'
+        : '<p class="none">Nobody reviewed your story.</p>') +
+       '</div>';
+
+  h += '<div class="card"><h3>Your teacher</h3><p class="of">&nbsp;</p>' +
+       (t ? bars(t, 4) +
+          '<div class="sum"><span class="ui">Total</span>' +
+          '<span class="n">' + t.total + ' <small>/ 12</small></span></div>'
+        : '<p class="none">Not graded yet.</p>') +
+       '</div>';
+  h += '</div>';
+
+  if(t && t.comment){
+    h += '<div class="fb"><h3>Comment from your teacher</h3>' +
+         '<div class="quote tq">' + esc(t.comment) + '</div></div>';
+  }
+
+  h += '<div class="fb" style="margin-top:30px"><h3>What your classmates said &mdash; ' +
+       p.comments.length + ' ' + (p.comments.length === 1 ? 'comment' : 'comments') + '</h3>';
+  h += p.comments.length
+    ? p.comments.map((c, i) =>
+        '<div class="quote"><span style="color:#6d767d;font-family:\'Cinzel\',serif;' +
+        'font-size:12px;margin-right:8px">' + (i+1) + '.</span>' + esc(c) + '</div>').join('')
+    : '<p class="none">No comments yet.</p>';
+  h += '</div>';
+
+  $('resBody').innerHTML = h;
+}
+
+const esc = s => String(s).replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---- waiting for the doors to unlock ---- */
 function startWait(r){
