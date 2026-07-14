@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Twelve Doors</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#0b0e11;--fog:#c8d2d8;--brass:#c9a227;--brass-dim:#8a7220;
+        --danger:#c25b4a;--ok:#6f9f7f;--line:#2a3138;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--fog);font-family:'Spectral',Georgia,serif;
+       -webkit-font-smoothing:antialiased}
+  h1,h2,h3,button,label,legend,.ui{font-family:'Cinzel',serif;letter-spacing:.07em}
+  .wrap{max-width:1400px;margin:0 auto;padding:24px 20px 90px}
+
+  header{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;
+         border-bottom:1px solid #1c2228;padding-bottom:12px;margin-bottom:22px}
+  header h1{margin:0;font-size:19px;color:var(--brass);text-transform:uppercase}
+  .who{font-size:14px;color:#8b969e}.who b{color:var(--fog)}
+  .step{font-size:13px;color:var(--brass);text-transform:uppercase;margin:0 0 12px}
+
+  input,textarea{width:100%;background:#11161b;border:1px solid var(--line);color:var(--fog);
+    padding:12px 14px;font-family:inherit;font-size:16px;border-radius:2px}
+  input:focus,textarea:focus{outline:2px solid var(--brass-dim);outline-offset:1px}
+  textarea{min-height:260px;line-height:1.8;resize:vertical}
+  button{background:transparent;border:1px solid var(--brass-dim);color:var(--brass);
+    padding:12px 22px;font-size:12px;text-transform:uppercase;cursor:pointer;border-radius:2px;
+    transition:background .18s,color .18s}
+  button:hover:not(:disabled){background:var(--brass);color:var(--ink)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  button.primary{background:var(--brass);color:var(--ink);border-color:var(--brass)}
+  button.primary:hover{background:#e2ba33}
+  .msg{font-size:14px;min-height:20px;margin-top:12px}
+  .msg.err{color:var(--danger)}.msg.ok{color:var(--ok)}
+
+  .gate{max-width:400px;margin:14vh auto;text-align:center}
+  .gate h1{font-size:25px;color:var(--brass);margin:0 0 8px;text-transform:uppercase}
+  .gate p{color:#8b969e;margin:0 0 26px;line-height:1.6}
+  .gate input{text-align:center}
+  .gate .msg{text-align:center}
+
+  .prompt{background:#11161b;border-left:2px solid var(--brass-dim);padding:16px 20px;
+    line-height:1.85;color:#aab4bb;max-width:74ch;margin:0 0 18px;font-size:15px}
+  .reqs{display:flex;flex-wrap:wrap;gap:18px;font-size:13px;color:#8b969e;margin-bottom:18px}
+  .reqs b{color:var(--brass);font-weight:400}
+  .foot{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap}
+  .wc{font-size:13px;color:#6d767d}
+
+  .room{position:relative;line-height:0;border:1px solid #1c2228}
+  .room img{width:100%;height:auto;display:block}
+  .door{position:absolute;border:0;padding:0;background:rgba(0,0,0,0);border-radius:2px;
+    cursor:pointer;transition:background .2s,box-shadow .2s}
+  .door:hover:not(:disabled),.door:focus-visible{background:rgba(201,162,39,.18);
+    box-shadow:0 0 26px 6px rgba(201,162,39,.32) inset;outline:none}
+  .door .tag{position:absolute;left:50%;bottom:-24px;transform:translateX(-50%);
+    font-family:'Cinzel',serif;font-size:10px;letter-spacing:.09em;white-space:nowrap;
+    color:#7d8790;line-height:1}
+  .door[data-state="sealed"]{cursor:not-allowed}
+  .door[data-state="sealed"] .tag{color:#5c646b}
+  .door[data-state="done"]{background:rgba(0,0,0,.55);cursor:not-allowed}
+  .door[data-state="done"] .tag{color:var(--ok)}
+  .door[data-state="mine"]{cursor:default}
+  .door[data-state="mine"] .tag{color:var(--brass)}
+  .door[data-state="open"] .tag{color:#d7dee3}
+  .strip{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:36px;
+    font-size:13px;color:#8b969e}
+  .legend span{margin-right:18px;white-space:nowrap}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+
+  .veil{position:fixed;inset:0;background:rgba(4,6,8,.9);display:none;padding:40px 20px;
+    overflow:auto;z-index:10}
+  .veil.on{display:block}
+  .panel{max-width:760px;margin:0 auto;background:#0e1317;border:1px solid var(--line);padding:32px 34px 34px}
+  .panel h2{color:var(--brass);font-size:15px;margin:0 0 2px;text-transform:uppercase}
+  .panel .sub{color:#7d8790;font-size:13px;margin:0 0 22px}
+  .story{white-space:pre-wrap;line-height:1.9;font-size:17px;color:#dbe3e8;
+    border-left:2px solid var(--brass-dim);padding-left:20px;margin-bottom:28px}
+  .cat{border-top:1px solid #1c2228;padding:18px 0}
+  .cat h3{font-size:12px;color:var(--brass);text-transform:uppercase;margin:0 0 5px;font-weight:500}
+  .cat p{font-size:14px;color:#aab4bb;margin:0 0 12px;line-height:1.55}
+  .opts{display:flex;gap:6px}
+  .opts input{display:none}
+  .opts label{flex:1;text-align:center;border:1px solid var(--line);border-radius:2px;
+    padding:9px 4px;cursor:pointer;color:#8b969e;font-size:11.5px;line-height:1.4;letter-spacing:.02em}
+  .opts label b{display:block;font-size:15px;font-weight:500;margin-bottom:2px}
+  .opts input:checked + label{background:var(--brass);color:var(--ink);border-color:var(--brass)}
+  .total{border-top:1px solid #1c2228;padding-top:16px;display:flex;justify-content:space-between;
+    align-items:center;margin-bottom:18px}
+  .total .ui{font-size:12px;color:#8b969e;text-transform:uppercase}
+  .total .n{font-size:21px;color:var(--brass)}
+  .total .n small{font-size:13px;color:#6d767d}
+  label.lbl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+    color:#8b969e;margin:0 0 8px}
+  .hint{font-size:13px;color:#6d767d;font-style:italic;margin:10px 0 16px}
+  .row{display:flex;gap:10px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<section class="gate" id="gate">
+  <h1>The Twelve Doors</h1>
+  <p>Enter your student number to wake up in the room.<br>学籍番号を入力してください。</p>
+  <input id="num" inputmode="numeric" placeholder="241000" autocomplete="off">
+  <div style="margin-top:14px"><button class="primary" id="enterBtn">Enter the room</button></div>
+  <div class="msg err" id="gateMsg"></div>
+</section>
+
+<div class="wrap" id="main" hidden>
+  <header>
+    <h1>The Twelve Doors</h1>
+    <div class="who">Door <b id="myDoor"></b> &middot; <b id="myName"></b></div>
+  </header>
+
+  <section id="writeStage" hidden>
+    <p class="step">Step 1 — write your story</p>
+    <div class="prompt">
+      You wake up in a large room. It is dark and unfamiliar. The concrete floor you are laying on is cold
+      and it takes you a moment to stand up. You look around the room: it is completely empty except for a
+      line of wooden doors in front of you. Each door has a golden number decorating it. The numbers are
+      from one to twelve.<br><br>
+      Moving closer to the wall of doors, you notice there is a sign above them. It says the following:
+      <i>“Choose a door. Once you open one the other doors will lock. The only way out is to choose!”</i>
+      The room is so quiet that you can hear your heart beating. Trapped, you gather your courage and move
+      towards a door. <b style="color:#dbe3e8">The door begins to change when you get closer…</b>
+    </div>
+    <div class="reqs">
+      <span>Beginning <b>150+</b></span><span>Middle <b>200+</b></span><span>End <b>150+</b></span>
+      <span>Total <b>500+ words</b></span>
+    </div>
+    <label class="lbl" for="title">Title</label>
+    <input id="title" placeholder="Give your story a title" maxlength="90">
+    <label class="lbl" for="story" style="margin-top:16px">Your story</label>
+    <textarea id="story" placeholder="The door begins to change when you get closer…"></textarea>
+    <div class="foot">
+      <span class="wc" id="wc">0 / 500 words</span>
+      <button class="primary" id="postBtn">Post to door <span id="doorLabel"></span></button>
+    </div>
+    <div class="msg" id="writeMsg"></div>
+  </section>
+
+  <section id="roomStage" hidden>
+    <p class="step">Step 2 — read every open door</p>
+    <div class="room">
+      <img src="doors.png" alt="A dark room with twelve numbered wooden doors">
+      <div id="doors"></div>
+    </div>
+    <div class="strip">
+      <div class="legend">
+        <span><i class="dot" style="background:#d7dee3"></i>Open — read it</span>
+        <span><i class="dot" style="background:#6f9f7f"></i>Locked — you finished it</span>
+        <span><i class="dot" style="background:#5c646b"></i>Sealed — no story yet</span>
+        <span><i class="dot" style="background:#c9a227"></i>Your door</span>
+      </div>
+      <div id="progress"></div>
+    </div>
+  </section>
+</div>
+
+<div class="veil" id="veil">
+  <div class="panel">
+    <h2 id="pDoor"></h2>
+    <p class="sub" id="pTitle"></p>
+    <div class="story" id="pStory"></div>
+    <div id="rubric"></div>
+    <div class="total"><span class="ui">Total</span>
+      <span class="n"><span id="tot">–</span> <small>/ 12</small></span></div>
+    <label class="lbl" for="comment">Comment</label>
+    <textarea id="comment" style="min-height:110px"
+      placeholder="What did you like? What could be better? (10 words or more)"></textarea>
+    <p class="hint">Once you send this, door <span id="pDoor2"></span> locks. You cannot open it again.</p>
+    <div class="row">
+      <button id="cancelBtn">Back to the room</button>
+      <button class="primary" id="lockBtn">Send &amp; lock the door</button>
+    </div>
+    <div class="msg" id="panelMsg"></div>
+  </div>
+</div>
+
+<script>
+/* ===== PASTE YOUR APPS SCRIPT /exec URL HERE ===== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbyBShhsvcfA7McKnMPp5XsW3IB5iJ282ofcCU1htHna__l-xwHQVvQMyZrt6U9G3DMW/exec';
+
+const CATS = [
+  {k:'organization', n:'Organization', q:'Did the story have a clear and developed beginning, middle, and end?'},
+  {k:'characters',   n:'Characters',   q:'Did the story have interesting characters with defined personalities?'},
+  {k:'story',        n:'Story',        q:'Was the story creative? Was it surprising, funny, scary, etc.? Did it keep you interested?'},
+];
+const LAB = {1:'Strongly disagree', 2:'Disagree', 3:'Agree', 4:'Strongly agree'};
+
+const HOTSPOTS = [9.3,17.0,24.6,32.2,39.8,47.3,54.9,62.5,70.1,77.7,85.2,92.8]; // % centres
+const DOOR_TOP = 27.0, DOOR_H = 23.5, DOOR_W = 6.9;
+
+let ME = null, STATE = null, ACTIVE = null;
+const $ = id => document.getElementById(id);
+const say = (el, t, c) => { el.className = 'msg ' + (c || ''); el.textContent = t; };
+
+async function api(payload){
+  try{
+    const r = await fetch(API_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload),
+    });
+    return await r.json();
+  }catch(e){
+    return {ok:false, error:'Could not reach the server. Check your connection and try again.'};
+  }
+}
+
+/* ---- login ---- */
+$('num').value = localStorage.getItem('doors_num') || '';
+$('enterBtn').onclick = enter;
+$('num').addEventListener('keydown', e => { if(e.key === 'Enter') enter(); });
+
+async function enter(){
+  const n = $('num').value.trim();
+  if(!n) return say($('gateMsg'), 'Enter your student number.', 'err');
+  $('enterBtn').disabled = true;
+  say($('gateMsg'), 'Opening…', '');
+  const r = await api({action:'login', student_number:n});
+  $('enterBtn').disabled = false;
+  if(!r.ok) return say($('gateMsg'), r.error, 'err');
+  ME = r.student;
+  localStorage.setItem('doors_num', n);
+  $('gate').hidden = true; $('main').hidden = false;
+  $('myDoor').textContent = ME.door;
+  $('myName').textContent = ME.name;
+  $('doorLabel').textContent = ME.door;
+  await refresh();
+}
+
+async function refresh(){
+  const r = await api({action:'state', student_number:ME.student_number});
+  if(!r.ok) return;
+  STATE = r;
+  $('writeStage').hidden = r.posted;
+  $('roomStage').hidden = !r.posted;
+  if(r.posted) renderDoors();
+}
+
+/* ---- writing ---- */
+$('story').addEventListener('input', () => {
+  const w = $('story').value.trim().split(/\s+/).filter(Boolean).length;
+  $('wc').textContent = w + ' / 500 words';
+  $('wc').style.color = w >= 500 ? '#6f9f7f' : '#6d767d';
+});
+$('postBtn').onclick = async () => {
+  $('postBtn').disabled = true;
+  say($('writeMsg'), 'Posting…', '');
+  const r = await api({action:'submit', student_number:ME.student_number,
+                       title:$('title').value, story:$('story').value});
+  $('postBtn').disabled = false;
+  if(!r.ok) return say($('writeMsg'), r.error, 'err');
+  say($('writeMsg'), 'Posted. Your door is open.', 'ok');
+  await refresh();
+};
+
+/* ---- the room ---- */
+function renderDoors(){
+  const box = $('doors');
+  box.innerHTML = '';
+  let open = 0, done = 0;
+
+  STATE.doors.forEach(d => {
+    const b = document.createElement('button');
+    b.className = 'door';
+    b.style.left = (HOTSPOTS[d.door-1] - DOOR_W/2) + '%';
+    b.style.top = DOOR_TOP + '%';
+    b.style.width = DOOR_W + '%';
+    b.style.height = DOOR_H + '%';
+
+    let s, tag;
+    if(d.isMine){ s='mine'; tag='YOUR DOOR'; }
+    else if(!d.hasStory){ s='sealed'; tag='SEALED'; }
+    else if(d.reviewed){ s='done'; tag='LOCKED'; done++; }
+    else { s='open'; tag='OPEN'; open++; }
+
+    b.dataset.state = s;
+    b.disabled = (s !== 'open');
+    b.setAttribute('aria-label', 'Door ' + d.door + ' — ' + tag);
+    b.innerHTML = '<span class="tag">' + tag + '</span>';
+    if(s === 'open') b.onclick = () => openDoor(d.door);
+    box.appendChild(b);
+  });
+
+  $('progress').innerHTML = open === 0
+    ? '<b style="color:#6f9f7f">All doors locked. You are out. お疲れさま！</b>'
+    : 'Doors left to open: <b style="color:#c9a227">' + open + '</b> &nbsp;·&nbsp; locked: ' + done;
+}
+
+/* ---- rubric ---- */
+$('rubric').innerHTML = CATS.map(c => {
+  let o = '';
+  for(let i=1;i<=4;i++){
+    o += '<input type="radio" name="'+c.k+'" id="'+c.k+i+'" value="'+i+'">' +
+         '<label for="'+c.k+i+'"><b>'+i+'</b>'+LAB[i]+'</label>';
+  }
+  return '<div class="cat"><h3>'+c.n+'</h3><p>'+c.q+'</p><div class="opts">'+o+'</div></div>';
+}).join('');
+
+function scores(){
+  const s = {};
+  CATS.forEach(c => {
+    const p = document.querySelector('input[name="'+c.k+'"]:checked');
+    if(p) s[c.k] = Number(p.value);
+  });
+  return s;
+}
+$('rubric').addEventListener('change', () => {
+  const s = scores();
+  const keys = Object.keys(s);
+  $('tot').textContent = keys.length === 3
+    ? CATS.reduce((a,c) => a + s[c.k], 0) : '–';
+});
+
+/* ---- read & grade ---- */
+async function openDoor(door){
+  const r = await api({action:'story', door:door});
+  if(!r.ok) return alert(r.error);
+  ACTIVE = door;
+  $('pDoor').textContent = 'Door ' + door;
+  $('pDoor2').textContent = door;
+  $('pTitle').textContent = r.title + ' — ' + r.words + ' words';
+  $('pStory').textContent = r.story;
+  $('comment').value = '';
+  $('rubric').querySelectorAll('input').forEach(i => i.checked = false);
+  $('tot').textContent = '–';
+  say($('panelMsg'), '', '');
+  $('veil').classList.add('on');
+  $('veil').scrollTop = 0;
+}
+$('cancelBtn').onclick = () => $('veil').classList.remove('on');
+document.addEventListener('keydown', e => { if(e.key === 'Escape') $('veil').classList.remove('on'); });
+
+$('lockBtn').onclick = async () => {
+  const s = scores();
+  if(Object.keys(s).length < 3) return say($('panelMsg'), 'Score every category before you send.', 'err');
+  $('lockBtn').disabled = true;
+  say($('panelMsg'), 'Locking…', '');
+  const r = await api(Object.assign({
+    action:'review', reviewer_number:ME.student_number,
+    door:ACTIVE, comment:$('comment').value,
+  }, s));
+  $('lockBtn').disabled = false;
+  if(!r.ok) return say($('panelMsg'), r.error, 'err');
+  $('veil').classList.remove('on');
+  await refresh();
+};
+</script>
+</body>
+</html>
